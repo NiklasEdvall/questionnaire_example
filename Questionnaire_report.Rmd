@@ -1,0 +1,117 @@
+---
+title: "Questionnaire analysis example"
+author: "Niklas Edvall"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+#include = FALSE means this code section is not included in knitted html-report
+
+#Load libraries
+library(readr) # Used to make it easy to load CSV data 
+library(arsenal) # To make nice descriptive tables
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+This is report and script provide an example on how to use R Markdown to create an analysis report from questionnaire data. Most code chunks are included in this report to make it easy to follow.
+
+### Research questions
+
+Using questionnaire data and sociodemographics we investigate
+
+1. Is the score on the Tinnitus Handicap Inventory (THI) questionnaire affected by age?
+2. Do older participants take longer to answer the online questionnaires?
+
+### Load data
+Load data as data frame named *dat* using readr-package and display the first 5 rows and 10 columns to inspect data. Note that date and time format are specified for columns containing such data.
+
+```{r}
+dat <- read_csv("data/Data.csv", 
+                col_types = cols(logindate = col_date(format = "%Y-%m-%d"),   # Date format
+                                                  logintime = col_time(format = "%H:%M:%S"),   # Time format
+                                                  logofftime = col_time(format = "%H:%M:%S"))) # Time format
+
+head(dat, n = c(5,10))
+```
+
+### Specify and rename some parameters
+The variables *item.1* is coding for the participants sex, *item.3* if they report a hearing problem in noisy listening environment and *item.2* is their age at questionnaire completion. The variables for sex and age are coded as factor variables with response options being labeled. The variable *item.2* is renamed as age but left as a numeric variable.
+```{r}
+# Factor (categorical variables)
+dat$item.1 <- factor(dat$item.1, levels = c(1,2), labels = c("M", "F"))
+dat$item.3 <- factor(dat$item.3, levels = c(1,2,3,4), labels = c("No", "Sometimes", "Often", "Always"))
+
+# Rename variables
+names(dat)[names(dat) == "item.1"] <- "sex"
+names(dat)[names(dat) == "item.2"] <- "age"
+names(dat)[names(dat) == "item.3"] <- "hearing"
+
+```
+
+### Calculate new variables
+Using the function apply() we sum columns with names in the created variable *THI.names* for each row in the data frame. This way we create a new variable (*THIscore*) with the THI total score for each participant. We also calculate the time spend online by taking the time of logging in (the variable *logintime*) away from the time the participant logged off (the variable *logofftime*). We divide this value by 60 to represent the time in minutes and transform it to a numeric variable from a time-variable using the function as.numeric(). We call this new variable *t.online*.
+
+```{r}
+#Create list of names that match names of THI items in data
+THI.names <- paste("THI", seq(1:25), sep="_")
+
+# Calculate new variables of interest
+dat$THIscore <- apply(dat[,THI.names], 1, FUN=sum)
+dat$t.online <- as.numeric((dat$logofftime - dat$logintime)/60) #divide by 60 for minutes
+```
+
+### Descriptive table
+Using the package *arsenal* to create a descriptive table (named *tab1*) of Male and Female participants separately. Include p-value from statistical test to show no difference between Male and Female participants. Note to specify *results='asis'* for code-chunk to get table output as html
+
+```{r, results='asis'}
+# Descriptive table
+tab1 <- tableby(sex ~ age + hearing + THIscore, data = dat, digits = 1, total = FALSE)
+
+summary(tab1, pfootnote = TRUE)
+```
+
+### Question 1, plot and regression
+To answer <abbr title="Is the score on the Tinnitus Handicap Inventory (THI) questionnaire affected by age?">question 1</abbr> we show a scatter plot of *age* as a function of the THI total score and overlay it with a best-fit linear regression line. We also show the summary output of the linear regression model showing that for each year increased in age the THI score increase by only 0.08 points, a weak and not statistically significant relationship (p = 0.26). Age does not affect the THI score.
+
+```{r}
+# Plot THI score as function of age ==================================
+plot(dat$age, dat$THIscore, xlab = "Age (years)", ylab = "THI total score") #Scatter plot
+abline(lm(dat$age ~ dat$THIscore)) #Linear regression line
+
+# Calculate linear regression model for age ~ THIscore
+lin.mod1 <- lm(dat$THIscore ~ dat$age)
+summary(lin.mod1)
+```
+
+### Question 2, plot and regression
+To answer <abbr title="Do older participants take longer to answer the online questionnaires?">question 2</abbr> we show a scatter plot of *t.online* as a function of *age* and overlay it with a best-fit linear regression line. We again show the summary output of the linear regression model.
+
+There is no relationship between age and time spent on page.
+
+```{r}
+# Plot THI score as function of age ==================================
+plot(dat$age, dat$t.online, xlab = "Age (years)", ylab = "Time spent on page (minutes)") #Scatter plot
+abline(lm(dat$t.online ~ dat$age)) #Linear regression line
+
+# Calculate linear regression model for age ~ THIscore
+lin.mod2 <- lm(dat$t.online ~ dat$age)
+summary(lin.mod2)
+```
+
+### Histogram
+We look at a histogram of *t.online* and see that a few participants spent less than 5 minutes on the page and should probably excluded as this is sufficient time. We create a new data frame (*dat.exc*) with only those who spent more than 5 minutes on page  (i.e *t.online* > 5) and excluding everyone who spent less than 5 minutes. Comparing the number of rows between the old and new data frames show that n = 6 participants got excluded.
+
+```{r}
+hist(dat$t.online, main = "Time spent on page", xlab = "Minutes", ylab = "Frequency (n)")
+
+dat.exc <- dat[dat$t.online > 5, ]
+
+nrow(dat) - nrow(dat.exc)
+
+```
